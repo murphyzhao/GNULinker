@@ -130,9 +130,206 @@ SECTIONS
 
 ## 3.4 简单的链接脚本命令
 
+在本节中，我们将介绍简单的链接脚本命令。
 
+- Entry Point：设置入口点
+- File Commands：处理文件的命令
+- Format Commands：处理目标文件格式的命令
+- REGION_ALIAS：将别名分配到内存区域
+- Miscellaneous Commands：其它命令
+
+### 3.4.1 设置入口点
+
+在程序中执行的第一条指令称为 *entry point(入口点)*。您可以使用 `ENTRY` 链接脚本命令设置入口点。`ENTRY` 命令的参数是符号名称：
+
+```
+ENTRY(symbol)
+```
+
+有几种方法可以设置入口点。链接器将按顺序尝试以下每个方法来设置入口点，当其中一个方法成功时停止设置入口点：
+
+- `-e` 命令行选项;
+- 在链接脚本中使用 `ENTRY(symbol)` 命令;
+- 目标特定符号的值，如果已定义; 对于许多目标而言，这是开始，但是基于 PE 和 BeOS 的系统会检查一系列可能的入口符号，匹配找到的第一个符号。
+- `.text` 段的第一个字节的地址（如果 `.text` 段存在）;
+- 地址 0。
+
+### 3.4.2 处理文件的命令
+
+处理文件的几个链接脚本命令。
+
+#### INCLUDE
+
+```
+INCLUDE filename
+```
+
+在当前点引入链接脚本文件 *filename*。将在当前目录以及使用 `-L` 选项指定的任何目录中搜索该文件。你可以嵌套调用 `INCLUDE` 最多 10 级。
+
+你可以将 `INCLUDE` 放到 `MEMORY` 命令、`SECTIONS` 命令或输出段描述的顶层。（*此处翻译有待商榷*）
+
+#### INPUT
+
+```
+INPUT(file, file, ...)
+INPUT(file file ...)
+```
+
+`INPUT` 命令指示链接器在链接时包含命令列出的文件，跟在命令行上使用的一样。
+
+例如，如果你总是想在链接的时候包含 `subr.o`，但你不想把它放到每个链接命令上，那么你可以在链接器脚本中加入 `INPUT(subr.o)`。
+
+实际上，如果您愿意，可以在链接脚本中列出所有输入文件，然后使用 `-T` 选项调用链接器。
+
+如果配置了 `sysroot 前缀`，并且 filename 以 `/` 字符开头，并且正在处理的脚本位于 *sysroot 前缀* 内，则将在 *sysroot 前缀* 中查找 filename。 否则，链接器将尝试在当前目录中打开该文件。如果未找到，链接器将搜索库搜索路径。请参阅[命令行选项]()中的 `-L` 说明。
+
+如果使用 `INPUT(-lfile)`，链接器 ld 会将名字转换为 libfile.a，与命令行参数 `-l` 一样。
+
+在隐式链接脚本中使用 `INPUT` 命令时，文件在链接脚本被包含时才会被加入。这可能会影响库搜索。
+
+#### GROUP
+
+```
+GROUP(file, file, ...)
+GROUP(file file ...)
+```
+
+`GROUP` 命令类似于 `INPUT`，除了 GROUP 命令列出的文件都应该是库文件，并且重复搜索它们，直到没有创建新的未定义引用。请参阅[命令行选项]()中的 `-(` 的说明。
+
+#### AS_NEEDED
+
+```
+AS_NEEDED(file, file, ...)
+AS_NEEDED(file file ...)
+```
+
+此构造只能出现在 `INPUT` 或 `GROUP` 命令中，位于其他命令中间。此命令中列出的文件将被视为直接出现在 `INPUT` 或 `GROUP` 命令中，但 `ELF` 共享库除外，`ELF` 共享库只有在实际需要时才会被添加。这个构造实质上为此命令中列出的所有文件启用了 `--as-needed` 选项，并且恢复此前的 `--as-needed` 设置，此后的 `--no-as-needed`。
+
+#### OUTPUT
+
+```
+OUTPUT(filename)
+```
+
+该 OUTPUT 命令命名输出文件。在链接脚本中使用 `OUTPUT(filename)` 跟在命令行中使用 `-o filename` 一样（参阅[命令行选项]()）。如果两者都使用，则命令行选项优先。
+
+您可以使用该 `OUTPUT` 命令为输出文件定义默认名称，而不是通常的默认名称的 `a.out`。 
+
+#### SEARCH_DIR
+
+```
+SEARCH_DIR(path)
+```
+
+`SEARCH_DIR` 命令将 *path* 添加到 ld 搜索库路径列表中。使用 `SEARCH_DIR(path)` 就像使用在命令行上使用 `-L` 选项（请参阅[命令行选项]()）。如果两者都使用，则链接器将搜索两个路径。首先搜索使用命令行选项指定的路径。 
+
+#### STARTUP
+
+```
+STARTUP(filename)
+```
+
+`STARTUP` 命令就像 `INPUT` 命令一样，除了 *filename* 将成为要链接的第一个输入文件，就好像它是在命令行中首先指定的那样。在一些把第一个文件当做入口点的系统上，该命令会很有用。
+
+### 3.4.3 处理目标文件格式的命令
+
+一些处理目标文件格式的链接脚本命令。
+
+#### OUTPUT_FORMAT
+
+```
+OUTPUT_FORMAT(bfdname)
+OUTPUT_FORMAT(default, big, little)
+```
+
+`OUTPUT_FORMAT` 命令使用 `BFD` 格式定义输出文件（参见 [BFD]()）。使用 `OUTPUT_FORMAT(bfdname)` 跟在命令行上使用 `--oformat bfdname` 一样（请参阅[命令行选项]()）。如果两者都使用，则命令行选项优先。
+
+可以使用三个参数（*default, big, little*）的 `OUTPUT_FORMAT` 来基于 `-EB` 和 `-EL`命令行选项使用不同的格式。这允许链接脚本根据所需的字节序设置输出文件格式。
+
+如果没有 `-EB` 或 `-EL` 使用，那么输出文件格式将默认使用第一个参数（*default*）。如果使用了 `-EB`，输出格式将是第二个参数（*big*：大端）；如果 `-EL` 使用，输出格式将是第三个参数（*little*：小端）。
+
+例如，`MIPS ELF` 目标的默认链接描述文件使用以下命令：
+
+```
+OUTPUT_FORMAT(elf32-bigmips, elf32-bigmips, elf32-littlemips)
+```
+
+这表示输出文件的默认格式是 `ELF32-bigmips`，但如果用户使用 `-EL` 命令行选项，输出文件将在以 `ELF32-littlemips` 格式创建。 
+
+#### TARGET
+
+```
+TARGET(bfdname)
+```
+
+`TARGET` 命令配置在读取输入文件时使用的 `BFD` 格式。它影响后续 `INPUT` 和 `GROUP` 命令。跟在命令行上使用 `-b bfdname` 选项一样（请参阅[命令行选项]()）。如果 `TARGET` 使用但未使用 `OUTPUT_FORMAT`，则最后一个 `TARGET` 命令也用于设置输出文件的格式。见 [BFD]()。
+
+### 3.4.4 Assign alias names to memory regions（为内存区域指定别名）
+
+可以为 MEMORY 命令创建的内存区域指定别名。每个名字最多对应一个区域。
+
+```
+REGION_ALIAS(alias, region)
+```
+
+`REGION_ALIAS` 函数为内存区域 *region* 指定 *alias* 别名。这允许灵活地将输出部分映射到存储器区域。一个例子如下:
+
+假设我们有一个嵌入式系统的应用程序，它带有各种内存存储设备。它们都具有通用的易失性存储器 RAM，允许代码执行或数据存储。一些可能具有只读，非易失性存储器 ROM，其允许代码执行和只读数据访问。最后一个变体是只读，非易失性存储器 ROM2，具有只读数据访问和无代码执行能力。我们有四个输出部分：`.text` 程序代码; `.rodata` 只读数据; `.data` 可读写的已初始化数据; `.bss` 可读写的未初始化数据。
+
+- .text 程序代码;
+- .rodata 只读数据;
+- .data 已初始化的可读可写数据;
+- .bss 未初始化的可读可写数据（默认初始化为 0）。
+
+目标是提供一个链接脚本，其中包含系统无关的输出段和系统相关的输出段，将输出段映射到系统上可用的内存区。我们的嵌入式系统具有三种不同的内存设置 A、B、C：
+
+```
+Section  Variant A	Variant B	Variant C 
+.text	 RAM	    ROM     	ROM 
+.rodata	 RAM	    ROM	        ROM2 
+.data	 RAM	    RAM/ROM	    RAM/ROM2 
+.bss 	 RAM	    RAM	        RAM 
+
+```
+
+符号 `RAM/ROM` 或 `RAM/ROM2` 表示将此部分分别加载到区域 ROM 或 ROM2。请注意，本例中的三个 `.data` 部分的加载地址（起始地址）位于 `.rodata` 段的末尾。
+
+下面是处理输出段的基本链接脚本。它包括描述内存布局的 `linkcmds.memory` 系统相关文件：
+
+链接脚本：
+
+```
+INCLUDE linkcmds.memory
+
+SECTIONS
+{
+    .text :
+    {
+        *(.text)
+    } > REGION_TEXT
+    .rodata :
+    {
+        *(.rodata)
+        rodata_end = .;
+    } > REGION_RODATA
+    .data : AT (rodata_end)
+    {
+        data_start = .;
+        *(.data)
+    } > REGION_DATA
+    data_size = SIZEOF(.data);
+    data_load_start = LOADADDR(.data);
+    .bss :
+    {
+        *(.bss)
+    } > REGION_BSS
+}
+```
 
 ## 3.5 Assignments 将值分配给符号
+
+
+
 ## 3.6 SECTIONS 命令
 ## 3.7 MEMORY 命令
 ## 3.8 PHDRS 命令
