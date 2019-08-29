@@ -289,7 +289,6 @@ Section  Variant A	Variant B	Variant C
 .rodata	 RAM	    ROM	        ROM2 
 .data	 RAM	    RAM/ROM	    RAM/ROM2 
 .bss 	 RAM	    RAM	        RAM 
-
 ```
 
 符号 `RAM/ROM` 或 `RAM/ROM2` 表示将此部分分别加载到区域 ROM 或 ROM2。请注意，本例中的三个 `.data` 部分的加载地址（起始地址）位于 `.rodata` 段的末尾。
@@ -325,6 +324,161 @@ SECTIONS
     } > REGION_BSS
 }
 ```
+
+现在我们需要三个不同的 linkcmds.memory 文件来定义内存区域和别名。下面分别是 A、B、C 对应的 linkcmds.memory 内容：
+
+**A:**
+
+> 所有的内容都存入 RAM 空间。
+
+```
+MEMORY
+    {
+    RAM : ORIGIN = 0, LENGTH = 4M
+    }
+
+REGION_ALIAS("REGION_TEXT", RAM);
+REGION_ALIAS("REGION_RODATA", RAM);
+REGION_ALIAS("REGION_DATA", RAM);
+REGION_ALIAS("REGION_BSS", RAM);
+```
+
+**B:**
+
+> 程序代码和只读数据存放在 ROM 空间。可读写数据存入 RAM 空间。已初始化的数据被加载到 ROM，并在系统启动期间复制到 RAM。
+
+```
+MEMORY
+{
+    ROM : ORIGIN = 0, LENGTH = 3M
+    RAM : ORIGIN = 0x10000000, LENGTH = 1M
+}
+
+REGION_ALIAS("REGION_TEXT", ROM);
+REGION_ALIAS("REGION_RODATA", ROM);
+REGION_ALIAS("REGION_DATA", RAM);
+REGION_ALIAS("REGION_BSS", RAM);
+```
+
+**C:**
+
+> 程序代码存在 ROM 空间。只读数据存入 ROM2 空间。可读写数据进入 RAM 空间。已初始化的数据被加载到 ROM2，并在系统启动期间复制到 RAM。
+
+```
+MEMORY
+{
+    ROM : ORIGIN = 0, LENGTH = 2M
+    ROM2 : ORIGIN = 0x10000000, LENGTH = 1M
+    RAM : ORIGIN = 0x20000000, LENGTH = 1M
+}
+
+REGION_ALIAS("REGION_TEXT", ROM);
+REGION_ALIAS("REGION_RODATA", ROM2);
+REGION_ALIAS("REGION_DATA", RAM);
+REGION_ALIAS("REGION_BSS", RAM);
+```
+
+如果需要，可以编写一个通用的系统初始化程序将 `.data` 段从 ROM 或 ROM2 复制到 RAM：
+
+```
+#include <string.h>
+
+extern char data_start[];
+extern char data_size[];
+extern char data_load_start[];
+
+void copy_data(void)
+{
+    if (data_start != data_load_start)
+    {
+        memcpy(data_start, data_load_start, (size_t) data_size);
+    }
+}
+```
+
+### 3.4.5 Other Linker Script Commands（其它的链接脚本命令）
+
+还有一些其他链接脚本命令。
+
+#### ASSERT
+
+```
+ASSERT(exp, message)
+```
+
+确保 exp 不为零。如果为零，则并打印 *message* 内容，然后退出链接器。
+
+#### EXTERN
+
+```
+EXTERN(symbol symbol ...)
+```
+
+强制 *symbol* 在输出文件中作为未定义的符号。例如，这样做可以触发标准库中其他模块的链接。您可以为每个 `EXTERN` 罗列出多个符号，并且多次使用 `EXTERN`。此命令与 `-u` 命令行选项具有相同的效果。 
+
+#### FORCE_COMMON_ALLOCATION
+
+```
+FORCE_COMMON_ALLOCATION
+```
+
+此命令与 `-d` 命令行选项具有相同的效果：目的是让 ld 为普通符号分配空间，即便是使用了 `-r` 的重定位输出文件。
+
+#### INHIBIT_COMMON_ALLOCATION
+
+```
+INHIBIT_COMMON_ALLOCATION
+```
+
+此命令与 `--no-define-common` 命令行选项具有相同的效果：让 ld 不为普通符号分配空间，即便是一个非可重定位输出文件。
+
+#### INSERT
+
+```
+INSERT [ AFTER | BEFORE ] output_section
+```
+
+此命令通常用于由 `-T` 指定的脚本中，以使用例如 *overlays* 来扩充默认的 `SECTIONS`。它在 *output_section* 之后（或之前）插入所有先前的链接脚本，并还使 `-T` 不覆盖默认的链接脚本。确切的插入点与 `orphan` 段相同。参考[位置计数器]()。插入发生在链接器将输入节映射到输出节之后。在插入之前，由于 `-T` 脚本在默认链接脚本之前被解析，因此 `-T` 脚本中的语句先于位于脚本的内部的默认链接脚本执行。特别是，输入段分配将在默认脚本中的输出段之前输出到 `-T` 指定的输出段。以下是使用 `INSERT` 的 `-T` 脚本示例：
+
+```
+SECTIONS
+{
+    OVERLAY :
+    {
+        .ov1 { ov1*(.text) }
+        .ov2 { ov2*(.text) }
+    }
+}
+INSERT AFTER .text;
+```
+
+#### NOCROSSREFS
+
+```
+NOCROSSREFS(section section ...)
+```
+
+此命令可用于告诉 ld 报告 `NOCROSSREFS` 命令中的输出段之间的任何引用的错误。
+
+在某些类型的程序中，特别是在使用 *overlays* 时的嵌入式系统上，当一个段被加载到内存中时，另一个段不加载到内存。这两个部分之间的任何直接引用都是错误。例如，如果一个段中的代码调用另一端中的函数，则会出错。
+
+`NOCROSSREFS` 命令采用输出段名称列表。如果 ld 检测到 *section* 之间的任何交叉引用，它将报告错误并返回非零退出状态。请注意，`NOCROSSREFS` 命令使用输出节名称，而不是输入节名称。
+
+#### OUTPUT_ARCH
+
+```
+OUTPUT_ARCH(bfdarch)
+```
+
+指定特定的机器体系结构。参数是 BFD 库使用的名称之一（参见 [BFD]()）。您可以使用带有 `-f` 选项的 objdump 程序来查看目标文件的体系结构。
+
+#### LD_FEATURE
+
+```
+LD_FEATURE(string)
+```
+
+此命令可用于修改 ld 行为。如果 *string* 是 “SANE_EXPR”，则脚本中的绝对符号和数字在任何地方都被视为数字。参考 [Expression Section]()。
 
 ## 3.5 Assignments 将值分配给符号
 
