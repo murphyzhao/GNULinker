@@ -480,9 +480,61 @@ LD_FEATURE(string)
 
 此命令可用于修改 ld 行为。如果 *string* 是 “SANE_EXPR”，则脚本中的绝对符号和数字在任何地方都被视为数字。参考 [Expression Section]()。
 
-## 3.5 Assignments 将值分配给符号
+## 3.5 Assigning Values to Symbols 为符号指定值
 
+可以在链接脚本中为符号（symbols）指定值。这将定义符号并将其放入全局符号表中。
 
+- Simple Assignments: 简单赋值
+- HIDDEN: HIDDEN
+- PROVIDE: PROVIDE
+- PROVIDE_HIDDEN: PROVIDE_HIDDEN
+- Source Code Reference: 如何在源代码中使用链接脚本中定义的符号
+
+### 3.5.1 Simple Assignments
+
+可以使用任何 C 赋值运算符给符号赋值：
+
+```
+symbol = expression ;
+symbol += expression ;
+symbol -= expression ;
+symbol *= expression ;
+symbol /= expression ;
+symbol <<= expression ;
+symbol >>= expression ;
+symbol &= expression ;
+symbol |= expression ;
+```
+
+第一种情况定义了一个值为 *expression* 的符号。在其他情况下，必须是已定义的符号（symbol），并相应地调整值。
+
+特殊符号名称 `.` 表示位置计数器。您只能在 `SECTIONS` 命令中使用它。[见位置计数器]()。
+
+`expression` 后的 **分号** 是必需的。
+
+表达式定义如下; 见表达式。
+
+您可以将符号赋值作为命令单独编写，也可以作为命令中的语句编写，或者作为SECTIONS命令中输出节描述的一部分编写SECTIONS。
+
+符号的部分将从表达式的部分设置; 有关更多信息，请参阅表达式部分。
+
+以下示例显示了可以使用符号分配的三个不同位置：
+
+```
+floating_point = 0;
+SECTIONS
+{
+    .text :
+    {
+        *(.text)
+        _etext = .;
+    }
+    _bdata = (. + 3) & ~ 3;
+    .data : { *(.data) }
+}
+```
+
+在这个例子中，符号'浮点'将被定义为零。符号'_etext'将被定义为最后一个之后的地址'。文本'输入部分。符号'_bdata'将被定义为'后面的地址'。文本'输出部分向上对齐到4字节边界。
 
 ## 3.6 SECTIONS 命令
 ## 3.7 MEMORY 命令
